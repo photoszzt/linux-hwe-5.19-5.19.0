@@ -174,3 +174,9 @@ sphinx_*/
 
 # Rust analyzer configuration
 /rust-project.json
+
+arch/x86/kvm/kvm-asm-offsets.h
+drivers/gpu/drm/amd/amdgpu/amdgpu.ko.btf
+drivers/gpu/drm/amd/amdgpu/stpUZokQ
+drivers/media/i2c/ov6650.ko.btf
+
