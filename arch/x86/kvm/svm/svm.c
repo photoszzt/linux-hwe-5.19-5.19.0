@@ -3981,72 +3981,27 @@ static bool svm_has_emulated_msr(struct kvm *kvm, u32 index)
 	return true;
 }
 
-static u8 mtrr2protval[8];
-#define MTRR_TYPE_UC_MINUS 7
-#define MTRR2PROTVAL_INVALID 0xff
-
-static u8 fallback_mtrr_type(int mtrr)
-{
-	/*
-	 * WT and WP aren't always available in the host PAT.  Treat
-	 * them as UC and UC- respectively.  Everything else should be
-	 * there.
-	 */
-	switch (mtrr)
-	{
-	case MTRR_TYPE_WRTHROUGH:
-		return MTRR_TYPE_UNCACHABLE;
-	case MTRR_TYPE_WRPROT:
-		return MTRR_TYPE_UC_MINUS;
-	default:
-		BUG();
-	}
-}
-
-static void build_mtrr2protval(void)
-{
-	int i;
-	u64 pat;
-	
-	for (i = 0; i < 8; i++)
-		mtrr2protval[i] = MTRR2PROTVAL_INVALID;
-	
-	/* Ignore the invalid MTRR types.  */
-	mtrr2protval[2] = 0;
-	mtrr2protval[3] = 0;
-	
-	/*
-	 * Use host PAT value to figure out the mapping from guest MTRR
-	 * values to nested page table PAT/PCD/PWT values.  We do not
-	 * want to change the host PAT value every time we enter the
-	 * guest.
-	 */
-	rdmsrl(MSR_IA32_CR_PAT, pat);
-	for (i = 0; i < 8; i++) {
-		u8 mtrr = pat >> (8 * i);
-		
-		if (mtrr2protval[mtrr] == MTRR2PROTVAL_INVALID)
-			mtrr2protval[mtrr] = __cm_idx2pte(i);
-	}
-	
-	for (i = 0; i < 8; i++) {
-		if (mtrr2protval[i] == MTRR2PROTVAL_INVALID) {
-			u8 fallback = fallback_mtrr_type(i);
-			mtrr2protval[i] = mtrr2protval[fallback];
-			BUG_ON(mtrr2protval[i] == MTRR2PROTVAL_INVALID);
-		}
-	}
-}
-
 static u64 svm_get_mt_mask(struct kvm_vcpu *vcpu, gfn_t gfn, bool is_mmio)
 {
-   u8 mtrr;
+	u8 cache;
 
-   if (!kvm_arch_has_assigned_device(vcpu->kvm))
-       return 0;
+	/*
+	 * 1. MMIO: always map as UC
+	 * 2. No passthrough: always map as WB, and force guest PAT to WB as well
+	 * 3. Passthrough: can't guarantee the result, try to trust guest.
+	 */
+	if (is_mmio)
+		return _PAGE_NOCACHE;
 
-   mtrr = kvm_mtrr_get_guest_memory_type(vcpu, gfn);
-   return mtrr2protval[mtrr];
+	if (!kvm_arch_has_assigned_device(vcpu->kvm))
+		return 0;
+
+	cache = kvm_mtrr_get_guest_memory_type(vcpu, gfn);
+	/* Linux's host PAT value does not support WP. */
+	if (cache == _PAGE_CACHE_MODE_WP)
+		cache = _PAGE_CACHE_MODE_UC_MINUS;
+
+	return cachemode2protval(cache);
 }
 
 static void svm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
@@ -5014,7 +4969,6 @@ static __init int svm_hardware_setup(void)
 	 */
 	allow_smaller_maxphyaddr = !npt_enabled;
 
-	build_mtrr2protval();
 	return 0;
 
 err:
