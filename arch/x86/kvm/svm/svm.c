@@ -3983,25 +3983,7 @@ static bool svm_has_emulated_msr(struct kvm *kvm, u32 index)
 
 static u64 svm_get_mt_mask(struct kvm_vcpu *vcpu, gfn_t gfn, bool is_mmio)
 {
-	u8 cache;
-
-	/*
-	 * 1. MMIO: always map as UC
-	 * 2. No passthrough: always map as WB, and force guest PAT to WB as well
-	 * 3. Passthrough: can't guarantee the result, try to trust guest.
-	 */
-	if (is_mmio)
-		return _PAGE_NOCACHE;
-
-	if (!kvm_arch_has_assigned_device(vcpu->kvm))
-		return 0;
-
-	cache = kvm_mtrr_get_guest_memory_type(vcpu, gfn);
-	/* Linux's host PAT value does not support WP. */
-	if (cache == _PAGE_CACHE_MODE_WP)
-		cache = _PAGE_CACHE_MODE_UC_MINUS;
-
-	return cachemode2protval(cache);
+	return 0;
 }
 
 static void svm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
